@@ -51,7 +51,6 @@
             "key": "label_scope",
             "type": "text",
             "mandatory": true,
-            "default": "loc:quarantine",
             "description": "Desired label scope in defined format"
         }
     ]
