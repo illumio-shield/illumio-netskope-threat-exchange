@@ -4,4 +4,6 @@
 # python
 *.pyc
 
-# virtual env
+# pyenv/virtual env
+.python-version
+venv
