@@ -8,19 +8,27 @@
     "configuration": [
         {
             "label": "PCE URL https://my.pce.com",
-            "key": "api_url",
+            "key": "pce_url",
             "type": "text",
             "default": "",
             "mandatory": true,
             "description": "PCE url Address"
         },
         {
-            "label": "Port",
-            "key": "api_port",
+            "label": "PCE Port",
+            "key": "pce_port",
             "type": "number",
             "default": 443,
             "mandatory": true,
-            "description": "PCE API Port Number."
+            "description": "PCE Port Number"
+        },
+        {
+            "label": "PCE Organization ID",
+            "key": "org_id",
+            "type": "number",
+            "mandatory": true,
+            "default": "",
+            "description": "Organization ID"
         },
         {
             "label": "API Authentication Username",
@@ -32,26 +40,19 @@
         },
         {
             "label": "API Secret",
-            "key": "api_password",
+            "key": "api_secret",
             "type": "password",
             "default": "",
             "mandatory": true,
-            "description": "PCE API Password"
+            "description": "PCE API Secret"
         },
         {
-            "label": "Organization ID",
-            "key": "org_id",
-            "type": "number",
-            "mandatory": true,
-            "default": 1,
-            "description": "Organization ID"
-        },
-        {
-            "label": "Label Scope - loc:quarantine, app:monitoring, env:prod, role:jumpbox",
+            "label": "Label Scope",
             "key": "label_scope",
             "type": "text",
+            "default": "",
             "mandatory": true,
-            "description": "Desired label scope in defined format"
+            "description": "One or more label key/value pairs that make up the policy scope for threat workloads. Must be of the format key1:value1,key2:value2,..."
         }
     ]
 }
