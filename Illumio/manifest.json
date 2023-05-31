@@ -2,25 +2,25 @@
     "name": "Illumio",
     "id": "Illumio",
     "version": "1.0.0",
-    "description": "This plugin pulls ip addresses for the desired labels from Illumio PCE",
+    "description": "Creates Threat Exchange IoCs from workloads on the Illumio PCE within a configured policy scope.",
     "patch_supported": true,
     "push_supported": true,
     "configuration": [
         {
-            "label": "PCE URL https://my.pce.com",
+            "label": "PCE URL",
             "key": "pce_url",
             "type": "text",
             "default": "",
             "mandatory": true,
-            "description": "PCE url Address"
+            "description": "PCE FQDN with optional method prefix - e.g. https://my.pce.com"
         },
         {
-            "label": "PCE Port",
+            "label": "PCE Port Number",
             "key": "pce_port",
             "type": "number",
             "default": 443,
             "mandatory": true,
-            "description": "PCE Port Number"
+            "description": "PCE port number - use 443 for SaaS instances"
         },
         {
             "label": "PCE Organization ID",
@@ -28,7 +28,7 @@
             "type": "number",
             "mandatory": true,
             "default": "",
-            "description": "Organization ID"
+            "description": "PCE Organization ID"
         },
         {
             "label": "API Authentication Username",
