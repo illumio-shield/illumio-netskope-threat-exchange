@@ -105,39 +105,34 @@ class IllumioPlugin(PluginBase):
         error_message = ""
 
         if not conf.pce_url:
-            error_message += "PCE URL cannot be empty\n"
-
-        if not conf.api_username:
-            error_message += "API Username cannot be empty\n"
-
-        if not conf.api_secret:
-            error_message += "API Secret cannot be empty\n"
-
-        if conf.org_id <= 0:
-            error_message += "Org ID must be a positive integer\n"
-
-        if not (1 <= conf.pce_port <= 65535):
-            error_message += "PCE Port must be an integer in the range 1 - 65535"
-
-        if not conf.label_scope:
-            error_message += "Label Scope cannot be empty\n"
+            error_message = "PCE URL cannot be empty"
+        elif not conf.api_username:
+            error_message = "API Username cannot be empty"
+        elif not conf.api_secret:
+            error_message = "API Secret cannot be empty"
+        elif conf.org_id <= 0:
+            error_message = "Org ID must be a positive integer"
+        elif not (1 <= conf.pce_port <= 65535):
+            error_message = "PCE Port must be an integer in the range 1 - 65535"
+        elif not conf.label_scope:
+            error_message = "Label Scope cannot be empty"
         else:
             try:
                 parse_label_scope(conf.label_scope)
             except Exception as e:
-                error_message += f"Failed to parse Label Scope: {str(e)}\n"
+                error_message = f"Failed to parse Label Scope: {str(e)}"
 
         # only try to connect if the configuration is valid
         if not error_message:
             try:
                 connect_to_pce(conf, proxies=self.proxy)
             except Exception as e:
-                error_message += f"Unable to connect to PCE: {str(e)}"
+                error_message = f"Unable to connect to PCE: {str(e)}"
 
         error_message = error_message.strip()
 
         if error_message:
-            self.logger.error(f"Illumio Plugin: One or more validation errors occurred:\n{error_message}")
+            self.logger.error(f"Illumio Plugin: One or more validation errors occurred: {error_message}")
 
         return ValidationResult(
             success=error_message == "",
