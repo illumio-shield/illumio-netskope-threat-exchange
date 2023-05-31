@@ -2,8 +2,12 @@
 .DS_Store
 
 # python
+**/__pycache__/
 *.pyc
 
 # pyenv/virtual env
 .python-version
 venv
+
+# build files
+dist/
