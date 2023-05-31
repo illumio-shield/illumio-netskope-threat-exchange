@@ -2,115 +2,144 @@
 import json
 import os
 import sys
+from typing import List
 
-import requests
 from netskope.integrations.cte.models import Indicator, IndicatorType
-from netskope.integrations.cte.plugin_base import (PluginBase, PushResult,
-                                                   ValidationResult)
+from netskope.integrations.cte.plugin_base import (
+    PluginBase,
+    PushResult,
+    ValidationResult
+)
 from pydantic import ValidationError
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
+root_dir = os.path.abspath(os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(root_dir, "lib"))
 
-from illumio import PolicyComputeEngine
-from utils import *
+from illumio import PolicyComputeEngine, IllumioException
+
+from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
 
 
 class IllumioPlugin(PluginBase):
-    def handle_error(self, resp: requests.Response) -> any:
-        try:
-            resp.raise_for_status()
-            return resp.json()
-        except ValueError as e:
-            raise Exception(f"Illumio Plugin: failed to parse JSON: {str(e)}") from e
-        except Exception as e:
-            raise Exception(f"Illumio Plugin: Exception {str(e)}") from e
+    """IllumioPlugin class containing concrete """
 
-    def get_threat_indicators(self, pce, label_scope):
+    def pull(self):
+        """Pull workloads matching the configured scope from the Illumio PCE.
+
+        Queries the PCE based on the given label scope, creating threat
+        indicators for each interface on workloads matching the scope.
+        """
+        conf = IllumioPluginConfig(**self.configuration)
+        pce = connect_to_pce(conf, proxies=self.proxy)
+
+        indicators = []
+        ips = self.get_threat_indicators(pce, conf.label_scope)
+        for ip in ips:
+            indicators.append(Indicator(value=ip, type=IndicatorType.URL))
+            self.logger.info(f"Illumio Plugin: Successfully retrieved IP: {ip}")
+
+        return indicators
+
+    def get_threat_indicators(self, pce: PolicyComputeEngine, label_scope: str) -> List[str]:
+        """Retrieve threat workload IPs from the Illumio PCE.
+
+        Given a PCE connection client and policy scope, we call the PCE APIs to
+        get workloads matching the scope and return all interface IP addresses.
+
+        Args:
+            pce (PolicyComputeEngine): PCE API client object.
+            label_scope (string): Policy scope as a comma-separated key:value
+                pair list.
+
+        Returns:
+            List[str]: List of IP addresses from threat workloads.
+        """
         labels = parse_label_scope(label_scope)
 
         refs = []
         ips = []
 
-        for key, value in labels.items():
-            labels = pce.labels.get(params={"key": key, "value": value})
-            if len(labels) > 0:
-                refs.append(labels[0].href)
+        try:
+            for key, value in labels.items():
+                labels = pce.labels.get(params={"key": key, "value": value})
+                if len(labels) > 0:
+                    refs.append(labels[0].href)
 
-        workloads = pce.workloads.get_async(params={'labels': json.dumps([refs])})
+            workloads = pce.workloads.get_async(params={'labels': json.dumps([refs])})
+        except IllumioException as e:
+            self.logger.error(f"Illumio Plugin: Failed to fetch workloads: {str(e)}")
 
         for workload in workloads:
             for interface in workload.interfaces:
                 try:
-                    self.logger.info("Illumio Plugin Successfully retrieved IP: " + str(interface.address))
+                    self.logger.debug(f"Illumio Plugin: Successfully retrieved IP: {str(interface.address)}")
                     ips.append(interface.address)
                 except ValidationError as err:
-                    self.logger.info(f"Skipping workload {workload.hostname}: error encountered reading interfaces")
+                    self.logger.warn(f"Illumio Plugin: Skipping workload {workload.hostname}: error encountered reading interfaces")
 
         return ips
 
-    def pull(self):
-        """Pull IPs of desired Labels from PCE
-        Get all content from location configured on the plugin"""
-        config = self.configuration
-
-        pce = connect_to_pce(config)
-
-        indicators = []
-        ips = self.get_threat_indicators(pce, config["label_scope"])
-        for ip in ips:
-            indicators.append(Indicator(value=ip, type=IndicatorType.URL))
-            self.logger.info(f"Illumio Plugin: Successfully retrieved IP: {ip}")
-        return indicators
-
-
-    def validate(self, data):
-        """Validate the Plugin configuration parameters.
-        Validation for all the parameters mentioned in the manifest.json for the existence and
-        data type. Method returns the cte.plugin_base.ValidationResult object with success = True in the case
-        of successful validation and success = False and a error message in the case of failure.
+    def validate(self, configuration):
+        """Validate the plugin configuration parameters.
 
         Args:
-            data (dict): Dict object having all the Plugin configuration parameters.
+            configuration (dict): Plugin configuration parameter map.
+
         Returns:
-            cte.plugin_base.ValidateResult: ValidateResult object with success flag and message.
+            ValidationResult: Validation result with success flag and message.
         """
         self.logger.info("Illumio Plugin: validating plugin instance")
 
-        success = True
-        message = "Validation successful"
+        # read the configuration into a dataclass - type checking is performed
+        # as a post-init on all fields. Implicitly checks existence, where the
+        # TypeError falls through to the catch-all Exception case
+        try:
+            conf = IllumioPluginConfig(**configuration)
+        except ValueError as e:
+            self.logger.error(f"Illumio Plugin: {str(e)}")
+            return ValidationResult(success=False, message=str(e))
+        except Exception as e:
+            self.logger.error(f"Illumio Plugin: Failed to read config: {str(e)}")
+            return ValidationResult(success=False, message="Missing one or more configuration parameters")
 
-        if "api_url" not in data or not isinstance(data["api_url"], str) or not data["api_url"]:
-            success = False
-            message = "Missing or invalid PCE URL"
-        elif "api_username" not in data or not isinstance(data["api_username"], str) or not data["api_username"]:
-            success = False
-            message = "Missing or invalid API Username"
-        elif "api_password" not in data or not isinstance(data["api_password"], str) or not data["api_password"]:
-            success = False
-            message = "Missing or invalid API Secret"
-        elif "org_id" not in data or not isinstance(data["org_id"], int) or not data["org_id"]:
-            success = False
-            message = "Missing or invalid Org ID"
-        elif "api_port" not in data or not isinstance(data["api_port"], int) or not data["api_port"]:
-            success = False
-            message = "Missing or invalid API port"
-        elif "label_scope" not in data or not isinstance(data["label_scope"], str) or not data["label_scope"]:
-            success = False
-            message = "Missing or invalid Label Scope"
+        error_message = ""
+
+        if not conf.pce_url:
+            error_message += "PCE URL cannot be empty\n"
+
+        if not conf.api_username:
+            error_message += "API Username cannot be empty\n"
+
+        if not conf.api_secret:
+            error_message += "API Secret cannot be empty\n"
+
+        if conf.org_id <= 0:
+            error_message += "Org ID must be a positive integer\n"
+
+        if not (1 <= conf.pce_port <= 65535):
+            error_message += "PCE Port must be an integer in the range 1 - 65535"
+
+        if not conf.label_scope:
+            error_message += "Label Scope cannot be empty\n"
         else:
-            # FIXME: put this in its own block; this flow in general should be refactored
             try:
-                parse_label_scope(data["label_scope"])
+                parse_label_scope(conf.label_scope)
             except Exception as e:
-                success = False
-                message = "Failed to parse Label Scope: " + str(e)
+                error_message += f"Failed to parse Label Scope: {str(e)}\n"
 
+        # only try to connect if the configuration is valid
+        if not error_message:
             try:
-                connect_to_pce(data)
+                connect_to_pce(conf, proxies=self.proxy)
             except Exception as e:
-                success = False
-                message = "Unable to connect to PCE: " + str(e)
+                error_message += f"Unable to connect to PCE: {str(e)}"
 
-        if not success:
-            self.logger.error(f"Illumio Plugin - validation error: {message}")
-        return ValidationResult(success=success, message=message)
+        error_message = error_message.strip()
+
+        if error_message:
+            self.logger.error(f"Illumio Plugin: One or more validation errors occurred:\n{error_message}")
+
+        return ValidationResult(
+            success=error_message == "",
+            message=error_message or "Validation successful"
+        )
