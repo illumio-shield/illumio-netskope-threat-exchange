@@ -10,6 +10,7 @@ License:
 """
 import json
 import sys
+import traceback
 from pathlib import Path
 from typing import List
 
@@ -24,6 +25,8 @@ from illumio import PolicyComputeEngine  # noqa: E402
 
 from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce  # noqa: E402,E501
 
+PLUGIN_NAME = "CTE Illumio Plugin"
+
 
 class IllumioPlugin(PluginBase):
     """Netskope Threat Exchange plugin for the Illumio PCE.
@@ -32,6 +35,10 @@ class IllumioPlugin(PluginBase):
     """
 
     pce: PolicyComputeEngine
+
+    def __init__(self, name, *args, **kwargs):
+        super().__init__(name, *args, **kwargs)
+        self.log_prefix = f"{PLUGIN_NAME} [{name}]"
 
     def pull(self):
         """Pull workloads matching the configured scope from the Illumio PCE.
@@ -50,12 +57,13 @@ class IllumioPlugin(PluginBase):
             ips = self.get_threat_indicators(conf.label_scope)
             for ip in ips:
                 self.logger.debug(
-                    f"Illumio Plugin: Successfully retrieved IP: {ip}"
+                    f"{self.log_prefix}: Successfully retrieved IP: {ip}"
                 )
                 indicators.append(Indicator(value=ip, type=IndicatorType.URL))
         except Exception as e:
             self.logger.error(
-                f"Illumio Plugin: Failed to pull threat IoCs: {str(e)}"
+                f"{self.log_prefix}: Failed to pull threat IoCs: {str(e)}",
+                details=traceback.format_exc()
             )
 
         return indicators
@@ -88,7 +96,7 @@ class IllumioPlugin(PluginBase):
                     refs.append(labels[0].href)
                 else:
                     self.logger.warn(
-                        'Illumio Plugin: Failed to find label with'
+                        f'{self.log_prefix}: Failed to find label with'
                         f' key "{key}" and value "{value}"'
                     )
 
@@ -97,7 +105,7 @@ class IllumioPlugin(PluginBase):
             )
         except Exception as e:
             self.logger.error(
-                f"Illumio Plugin: Failed to fetch workloads: {str(e)}"
+                f"{self.log_prefix}: Failed to fetch workloads: {str(e)}"
             )
 
         ips = []
@@ -118,7 +126,7 @@ class IllumioPlugin(PluginBase):
         Returns:
             ValidationResult: Validation result with success flag and message.
         """
-        self.logger.info("Illumio Plugin: validating plugin instance")
+        self.logger.info("{self.log_prefix}: validating plugin instance")
 
         # read the configuration into a dataclass - type checking is performed
         # as a post-init on all fields. Implicitly checks existence, where the
@@ -126,11 +134,15 @@ class IllumioPlugin(PluginBase):
         try:
             conf = IllumioPluginConfig(**configuration)
         except ValueError as e:
-            self.logger.error(f"Illumio Plugin: {str(e)}")
+            self.logger.error(
+                f"{self.log_prefix}: {str(e)}",
+                details=traceback.format_exc()
+            )
             return ValidationResult(success=False, message=str(e))
         except Exception as e:
             self.logger.error(
-                f"Illumio Plugin: Failed to read config: {str(e)}"
+                f"{self.log_prefix}: Failed to read config: {str(e)}",
+                details=traceback.format_exc()
             )
             return ValidationResult(
                 success=False,
@@ -139,17 +151,17 @@ class IllumioPlugin(PluginBase):
 
         error_message = ""
 
-        if not conf.pce_url:
+        if not conf.pce_url.strip():
             error_message = "PCE URL cannot be empty"
-        elif not conf.api_username:
+        elif not conf.api_username.strip():
             error_message = "API Username cannot be empty"
-        elif not conf.api_secret:
+        elif not conf.api_secret.strip():
             error_message = "API Secret cannot be empty"
         elif conf.org_id <= 0:
             error_message = "Org ID must be a positive integer"
         elif not (1 <= conf.pce_port <= 65535):
             error_message = "PCE Port must be an integer in the range 1-65535"
-        elif not conf.label_scope:
+        elif not conf.label_scope.strip():
             error_message = "Label Scope cannot be empty"
         else:
             try:
@@ -170,7 +182,8 @@ class IllumioPlugin(PluginBase):
 
         if error_message:
             self.logger.error(
-                f"Illumio Plugin: Validation error: {error_message}"
+                f"{self.log_prefix}: Validation error: {error_message}",
+                details=traceback.format_exc()
             )
 
         return ValidationResult(
