@@ -1,10 +1,10 @@
 {
     "name": "Illumio",
     "id": "Illumio",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "description": "Creates Threat Exchange IoCs from workloads on the Illumio PCE within a configured policy scope.",
-    "patch_supported": true,
-    "push_supported": true,
+    "patch_supported": false,
+    "push_supported": false,
     "configuration": [
         {
             "label": "PCE URL",
@@ -27,7 +27,7 @@
             "key": "org_id",
             "type": "number",
             "mandatory": true,
-            "default": "",
+            "default": 1,
             "description": "PCE Organization ID"
         },
         {
