@@ -31,16 +31,13 @@ class IllumioPluginConfig:
         # handle type conversion for all fields, ignoring nulls
         for field in fields(self):
             val = getattr(self, field.name)
-            if val is not None:
-                if field.type is str:
-                    setattr(self, field.name, str(val).strip())
-                elif not isinstance(val, field.type):
-                    try:
-                        setattr(self, field.name, field.type(val))
-                    except ValueError:
-                        raise ValueError(f"{field.name}: invalid value {val}")
-            else:
+            if val is None:
                 raise ValueError(f"{field.name}: field cannot be null")
+            if not isinstance(val, field.type):
+                try:
+                    setattr(self, field.name, field.type(val))
+                except ValueError:
+                    raise ValueError(f"{field.name}: invalid value {val}")
 
 
 __all__ = [
