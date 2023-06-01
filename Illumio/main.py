@@ -5,23 +5,21 @@ import sys
 from typing import List
 
 from netskope.integrations.cte.models import Indicator, IndicatorType
-from netskope.integrations.cte.plugin_base import (
-    PluginBase,
-    PushResult,
-    ValidationResult
-)
-from pydantic import ValidationError
+from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
 
-root_dir = os.path.abspath(os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(root_dir, "lib"))
+src_dir = os.path.abspath(os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(src_dir, "lib"))
 
-from illumio import PolicyComputeEngine, IllumioException
+from illumio import PolicyComputeEngine
 
 from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
 
 
 class IllumioPlugin(PluginBase):
-    """IllumioPlugin class containing concrete """
+    """Netskope Threat Exchange plugin for the Illumio PCE.
+
+    Retrieves threat IoCs from Illumio based on a provided policy scope.
+    """
 
     def pull(self):
         """Pull workloads matching the configured scope from the Illumio PCE.
@@ -29,14 +27,18 @@ class IllumioPlugin(PluginBase):
         Queries the PCE based on the given label scope, creating threat
         indicators for each interface on workloads matching the scope.
         """
-        conf = IllumioPluginConfig(**self.configuration)
-        pce = connect_to_pce(conf, proxies=self.proxy)
+        try:
+            conf = IllumioPluginConfig(**self.configuration)
+            pce = connect_to_pce(conf, proxies=self.proxy)
 
-        indicators = []
-        ips = self.get_threat_indicators(pce, conf.label_scope)
-        for ip in ips:
-            indicators.append(Indicator(value=ip, type=IndicatorType.URL))
-            self.logger.info(f"Illumio Plugin: Successfully retrieved IP: {ip}")
+            indicators = []
+
+            ips = self.get_threat_indicators(pce, conf.label_scope)
+            for ip in ips:
+                indicators.append(Indicator(value=ip, type=IndicatorType.URL))
+                self.logger.info(f"Illumio Plugin: Successfully retrieved IP: {ip}")
+        except Exception as e:
+            self.logger.error(f"Illumio Plugin: Failed to pull threat IoCs from Illumio PCE: {str(e)}")
 
         return indicators
 
@@ -54,28 +56,30 @@ class IllumioPlugin(PluginBase):
         Returns:
             List[str]: List of IP addresses from threat workloads.
         """
-        labels = parse_label_scope(label_scope)
-
         refs = []
-        ips = []
 
         try:
+            labels = parse_label_scope(label_scope)
+
             for key, value in labels.items():
                 labels = pce.labels.get(params={"key": key, "value": value})
                 if len(labels) > 0:
+                    # only expect to match a single label for each k:v pair
                     refs.append(labels[0].href)
+                else:
+                    self.logger.warn(f'Illumio Plugin: Failed to find label with key "{key}" and value "{value}"')
 
             workloads = pce.workloads.get_async(params={'labels': json.dumps([refs])})
-        except IllumioException as e:
+        except Exception as e:
             self.logger.error(f"Illumio Plugin: Failed to fetch workloads: {str(e)}")
+
+        ips = []
 
         for workload in workloads:
             for interface in workload.interfaces:
-                try:
+                if interface.address:
                     self.logger.debug(f"Illumio Plugin: Successfully retrieved IP: {str(interface.address)}")
                     ips.append(interface.address)
-                except ValidationError as err:
-                    self.logger.warn(f"Illumio Plugin: Skipping workload {workload.hostname}: error encountered reading interfaces")
 
         return ips
 
@@ -132,7 +136,7 @@ class IllumioPlugin(PluginBase):
         error_message = error_message.strip()
 
         if error_message:
-            self.logger.error(f"Illumio Plugin: One or more validation errors occurred: {error_message}")
+            self.logger.error(f"Illumio Plugin: Validation error: {error_message}")
 
         return ValidationResult(
             success=error_message == "",
