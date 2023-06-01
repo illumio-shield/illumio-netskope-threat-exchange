@@ -28,7 +28,7 @@
             "type": "number",
             "mandatory": true,
             "default": 1,
-            "description": "PCE Organization ID"
+            "description": "Illumio PCE Organization ID"
         },
         {
             "label": "API Authentication Username",
@@ -36,7 +36,7 @@
             "type": "text",
             "default": "",
             "mandatory": true,
-            "description": "PCE API Username"
+            "description": "API key username generated on the Illumio PCE"
         },
         {
             "label": "API Secret",
@@ -44,7 +44,7 @@
             "type": "password",
             "default": "",
             "mandatory": true,
-            "description": "PCE API Secret"
+            "description": "API secret generated on the Illumio PCE"
         },
         {
             "label": "Label Scope",
