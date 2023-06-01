@@ -20,7 +20,7 @@ def parse_label_scope(scope: str) -> dict:
     return labels
 
 
-def connect_to_pce(conf: IllumioPluginConfig, proxies: dict = None) -> PolicyComputeEngine:
+def connect_to_pce(conf: IllumioPluginConfig, proxies: dict = None, verify: bool = True) -> PolicyComputeEngine:
     """Connect to the PCE, returning the PolicyComputeEngine client.
 
     Args:
@@ -34,6 +34,7 @@ def connect_to_pce(conf: IllumioPluginConfig, proxies: dict = None) -> PolicyCom
     """
     pce = PolicyComputeEngine(conf.pce_url, port=conf.pce_port, org_id=conf.org_id)
     pce.set_credentials(conf.api_username, conf.api_secret)
+    pce.set_tls_settings(verify=verify)
     if proxies:
         pce.set_proxies(http_proxy=proxies['http'], https_proxy=proxies['https'])
     pce.must_connect()

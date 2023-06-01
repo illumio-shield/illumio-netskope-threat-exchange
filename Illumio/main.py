@@ -29,7 +29,7 @@ class IllumioPlugin(PluginBase):
         """
         try:
             conf = IllumioPluginConfig(**self.configuration)
-            pce = connect_to_pce(conf, proxies=self.proxy)
+            pce = connect_to_pce(conf, proxies=self.proxy, verify=self.ssl_validation)
 
             indicators = []
 
@@ -128,7 +128,7 @@ class IllumioPlugin(PluginBase):
         # only try to connect if the configuration is valid
         if not error_message:
             try:
-                connect_to_pce(conf, proxies=self.proxy)
+                connect_to_pce(conf, proxies=self.proxy, verify=self.ssl_validation)
             except Exception as e:
                 error_message = f"Unable to connect to PCE: {str(e)}"
 
