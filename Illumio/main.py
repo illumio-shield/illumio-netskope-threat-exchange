@@ -1,4 +1,13 @@
-"""Illumio Plugin providing implementation for pull and validate methods from PluginBase."""
+# -*- coding: utf-8 -*-
+
+"""This module provides the Illumio plugin for Netskope Threat Exchange.
+
+Copyright:
+    © 2023 Illumio
+
+License:
+    Apache2
+"""
 import json
 import os
 import sys
@@ -10,9 +19,9 @@ from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
 src_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(src_dir, "lib"))
 
-from illumio import PolicyComputeEngine
+from illumio import PolicyComputeEngine  # noqa: E402
 
-from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
+from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce  # noqa: E402,E501
 
 
 class IllumioPlugin(PluginBase):
@@ -29,20 +38,26 @@ class IllumioPlugin(PluginBase):
         """
         try:
             conf = IllumioPluginConfig(**self.configuration)
-            pce = connect_to_pce(conf, proxies=self.proxy, verify=self.ssl_validation)
+            pce = connect_to_pce(
+                conf, proxies=self.proxy, verify=self.ssl_validation
+            )
 
             indicators = []
 
             ips = self.get_threat_indicators(pce, conf.label_scope)
             for ip in ips:
-                self.logger.debug(f"Illumio Plugin: Successfully retrieved IP: {ip}")
+                self.logger.debug(
+                    f"Illumio Plugin: Successfully retrieved IP: {ip}"
+                )
                 indicators.append(Indicator(value=ip, type=IndicatorType.URL))
         except Exception as e:
-            self.logger.error(f"Illumio Plugin: Failed to pull threat IoCs from Illumio PCE: {str(e)}")
+            self.logger.error(
+                f"Illumio Plugin: Failed to pull threat IoCs: {str(e)}"
+            )
 
         return indicators
 
-    def get_threat_indicators(self, pce: PolicyComputeEngine, label_scope: str) -> List[str]:
+    def get_threat_indicators(self, pce: PolicyComputeEngine, label_scope: str) -> List[str]:  # noqa: E501
         """Retrieve threat workload IPs from the Illumio PCE.
 
         Given a PCE connection client and policy scope, we call the PCE APIs to
@@ -67,11 +82,18 @@ class IllumioPlugin(PluginBase):
                     # only expect to match a single label for each k:v pair
                     refs.append(labels[0].href)
                 else:
-                    self.logger.warn(f'Illumio Plugin: Failed to find label with key "{key}" and value "{value}"')
+                    self.logger.warn(
+                        'Illumio Plugin: Failed to find label with'
+                        f' key "{key}" and value "{value}"'
+                    )
 
-            workloads = pce.workloads.get_async(params={'labels': json.dumps([refs])})
+            workloads = pce.workloads.get_async(
+                params={'labels': json.dumps([refs])}
+            )
         except Exception as e:
-            self.logger.error(f"Illumio Plugin: Failed to fetch workloads: {str(e)}")
+            self.logger.error(
+                f"Illumio Plugin: Failed to fetch workloads: {str(e)}"
+            )
 
         ips = []
 
@@ -102,8 +124,13 @@ class IllumioPlugin(PluginBase):
             self.logger.error(f"Illumio Plugin: {str(e)}")
             return ValidationResult(success=False, message=str(e))
         except Exception as e:
-            self.logger.error(f"Illumio Plugin: Failed to read config: {str(e)}")
-            return ValidationResult(success=False, message="Missing one or more configuration parameters")
+            self.logger.error(
+                f"Illumio Plugin: Failed to read config: {str(e)}"
+            )
+            return ValidationResult(
+                success=False,
+                message="Missing one or more configuration parameters"
+            )
 
         error_message = ""
 
@@ -116,7 +143,7 @@ class IllumioPlugin(PluginBase):
         elif conf.org_id <= 0:
             error_message = "Org ID must be a positive integer"
         elif not (1 <= conf.pce_port <= 65535):
-            error_message = "PCE Port must be an integer in the range 1 - 65535"
+            error_message = "PCE Port must be an integer in the range 1-65535"
         elif not conf.label_scope:
             error_message = "Label Scope cannot be empty"
         else:
@@ -128,14 +155,18 @@ class IllumioPlugin(PluginBase):
         # only try to connect if the configuration is valid
         if not error_message:
             try:
-                connect_to_pce(conf, proxies=self.proxy, verify=self.ssl_validation)
+                connect_to_pce(
+                    conf, proxies=self.proxy, verify=self.ssl_validation
+                )
             except Exception as e:
                 error_message = f"Unable to connect to PCE: {str(e)}"
 
         error_message = error_message.strip()
 
         if error_message:
-            self.logger.error(f"Illumio Plugin: Validation error: {error_message}")
+            self.logger.error(
+                f"Illumio Plugin: Validation error: {error_message}"
+            )
 
         return ValidationResult(
             success=error_message == "",
