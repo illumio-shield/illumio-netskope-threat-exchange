@@ -9,15 +9,16 @@ License:
     Apache2
 """
 import json
-import os
 import sys
+from pathlib import Path
 from typing import List
 
 from netskope.integrations.cte.models import Indicator, IndicatorType
 from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
 
-src_dir = os.path.abspath(os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(src_dir, "lib"))
+src_path = Path(__file__).resolve()
+src_dir = src_path.parent
+sys.path.insert(0, src_dir / "lib")
 
 from illumio import PolicyComputeEngine  # noqa: E402
 
@@ -30,6 +31,8 @@ class IllumioPlugin(PluginBase):
     Retrieves threat IoCs from Illumio based on a provided policy scope.
     """
 
+    pce: PolicyComputeEngine
+
     def pull(self):
         """Pull workloads matching the configured scope from the Illumio PCE.
 
@@ -38,13 +41,13 @@ class IllumioPlugin(PluginBase):
         """
         try:
             conf = IllumioPluginConfig(**self.configuration)
-            pce = connect_to_pce(
+            self.pce = connect_to_pce(
                 conf, proxies=self.proxy, verify=self.ssl_validation
             )
 
             indicators = []
 
-            ips = self.get_threat_indicators(pce, conf.label_scope)
+            ips = self.get_threat_indicators(conf.label_scope)
             for ip in ips:
                 self.logger.debug(
                     f"Illumio Plugin: Successfully retrieved IP: {ip}"
@@ -57,7 +60,7 @@ class IllumioPlugin(PluginBase):
 
         return indicators
 
-    def get_threat_indicators(self, pce: PolicyComputeEngine, label_scope: str) -> List[str]:  # noqa: E501
+    def get_threat_indicators(self, label_scope: str) -> List[str]:
         """Retrieve threat workload IPs from the Illumio PCE.
 
         Given a PCE connection client and policy scope, we call the PCE APIs to
@@ -77,7 +80,9 @@ class IllumioPlugin(PluginBase):
             labels = parse_label_scope(label_scope)
 
             for key, value in labels.items():
-                labels = pce.labels.get(params={"key": key, "value": value})
+                labels = self.pce.labels.get(
+                    params={"key": key, "value": value}
+                )
                 if len(labels) > 0:
                     # only expect to match a single label for each k:v pair
                     refs.append(labels[0].href)
@@ -87,7 +92,7 @@ class IllumioPlugin(PluginBase):
                         f' key "{key}" and value "{value}"'
                     )
 
-            workloads = pce.workloads.get_async(
+            workloads = self.pce.workloads.get_async(
                 params={'labels': json.dumps([refs])}
             )
         except Exception as e:
