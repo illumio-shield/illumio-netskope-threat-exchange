@@ -35,8 +35,8 @@ class IllumioPlugin(PluginBase):
 
             ips = self.get_threat_indicators(pce, conf.label_scope)
             for ip in ips:
+                self.logger.debug(f"Illumio Plugin: Successfully retrieved IP: {ip}")
                 indicators.append(Indicator(value=ip, type=IndicatorType.URL))
-                self.logger.info(f"Illumio Plugin: Successfully retrieved IP: {ip}")
         except Exception as e:
             self.logger.error(f"Illumio Plugin: Failed to pull threat IoCs from Illumio PCE: {str(e)}")
 
@@ -78,8 +78,7 @@ class IllumioPlugin(PluginBase):
         for workload in workloads:
             for interface in workload.interfaces:
                 if interface.address:
-                    self.logger.debug(f"Illumio Plugin: Successfully retrieved IP: {str(interface.address)}")
-                    ips.append(interface.address)
+                    ips.append(str(interface.address))
 
         return ips
 
