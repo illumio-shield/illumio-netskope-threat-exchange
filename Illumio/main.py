@@ -19,7 +19,7 @@ from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
 
 src_path = Path(__file__).resolve()
 src_dir = src_path.parent
-sys.path.insert(0, src_dir / "lib")
+sys.path.insert(0, str(src_dir / "lib"))
 
 from illumio import PolicyComputeEngine  # noqa: E402
 
