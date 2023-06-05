@@ -25,8 +25,10 @@ def parse_label_scope(scope: str) -> dict:
     label_dimensions = scope.split(",")
     labels = {}
     for label in label_dimensions:
+        if not label.strip():
+            continue
         k, v = label.split(":")
-        labels[k] = v
+        labels[k.strip()] = v.strip()
     return labels
 
 
