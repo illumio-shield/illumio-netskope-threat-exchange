@@ -9,21 +9,15 @@ License:
     Apache2
 """
 import json
-import sys
 import traceback
-from pathlib import Path
 from typing import List
 
 from netskope.integrations.cte.models import Indicator, IndicatorType
 from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
 
-src_path = Path(__file__).resolve()
-src_dir = src_path.parent
-sys.path.insert(0, str(src_dir / "lib"))
+from illumio import PolicyComputeEngine
 
-from illumio import PolicyComputeEngine  # noqa: E402
-
-from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce  # noqa: E402,E501
+from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
 
 PLUGIN_NAME = "CTE Illumio Plugin"
 
