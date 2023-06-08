@@ -32,7 +32,7 @@ class IllumioPluginConfig:
         for field in fields(self):
             val = getattr(self, field.name)
             if val is None:
-                raise ValueError(f"{field.name}: field cannot be null")
+                raise ValueError(f"{field.name}: field cannot be empty")
             if not isinstance(val, field.type):
                 try:
                     setattr(self, field.name, field.type(val))
