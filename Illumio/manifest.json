@@ -53,6 +53,24 @@
             "default": "",
             "mandatory": true,
             "description": "One or more label key/value pairs that make up the policy scope for threat workloads. Must be of the format key1:value1,key2:value2,..."
+        },
+        {
+            "label": "Enable Tagging",
+            "key": "enable_tagging",
+            "type": "choice",
+            "default": "yes",
+            "choices": [
+                {
+                    "key": "Yes",
+                    "value": "yes"
+                },
+                {
+                    "key": "No",
+                    "value": "no"
+                }
+            ],
+            "mandatory": false,
+            "description": "Whether or not to create tags for Threat IoCs based on their labels"
         }
     ]
 }

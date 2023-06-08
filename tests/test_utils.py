@@ -41,7 +41,8 @@ def test_parse_label_scopes(label_scope, expected_result, labels):
                 'org_id': 1,
                 'api_username': 'api_username',
                 'api_secret': 'apisecretxyz',
-                'label_scope': 'loc:quarantine'
+                'label_scope': 'loc:quarantine',
+                'enable_tagging': 'yes',
             },
             does_not_raise()
         ),
@@ -52,7 +53,8 @@ def test_parse_label_scopes(label_scope, expected_result, labels):
                 'org_id': '1',
                 'api_username': 'api_username',
                 'api_secret': 'apisecretxyz',
-                'label_scope': 'loc:quarantine'
+                'label_scope': 'loc:quarantine',
+                'enable_tagging': 'yes',
             },
             does_not_raise()
         ),
@@ -63,7 +65,8 @@ def test_parse_label_scopes(label_scope, expected_result, labels):
                 'org_id': 1,
                 'api_username': 'api_username',
                 'api_secret': 'apisecretxyz',
-                'label_scope': 'loc:quarantine'
+                'label_scope': 'loc:quarantine',
+                'enable_tagging': 'yes',
             },
             does_not_raise()
         ),
@@ -74,7 +77,8 @@ def test_parse_label_scopes(label_scope, expected_result, labels):
                 'org_id': 'invalid_value',
                 'api_username': 'api_username',
                 'api_secret': 'apisecretxyz',
-                'label_scope': 'loc:quarantine'
+                'label_scope': 'loc:quarantine',
+                'enable_tagging': 'yes',
             },
             pytest.raises(ValueError)
         ),
@@ -85,7 +89,8 @@ def test_parse_label_scopes(label_scope, expected_result, labels):
                 'org_id': 1,
                 'api_username': 'api_username',
                 'api_secret': 'apisecretxyz',
-                'label_scope': None
+                'label_scope': None,
+                'enable_tagging': 'yes',
             },
             pytest.raises(ValueError)
         ),

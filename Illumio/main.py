@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import List
 
 from netskope.common.utils import add_user_agent
-from netskope.integrations.cte.models import Indicator, IndicatorType, Tag
+from netskope.integrations.cte.models import Indicator, IndicatorType, TagIn
 from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
 from netskope.integrations.cte.utils import TagUtils
 
@@ -188,6 +188,9 @@ class IllumioPlugin(PluginBase):
         Returns:
             List[str]: the label tag names, of the form key:value.
         """
+        if str(self.configuration.get('enable_tagging', '')).lower() != 'yes':
+            return []
+
         if not self.tag_utils:
             self.tag_utils = TagUtils()
 
@@ -198,7 +201,7 @@ class IllumioPlugin(PluginBase):
 
             if not self.tag_utils.exists(label_tag):
                 self.tag_utils.create_tag(
-                    Tag(name=label_tag, color=ILO_ORANGE_HEX_CODE)
+                    TagIn(name=label_tag, color=ILO_ORANGE_HEX_CODE)
                 )
 
             tags.append(label_tag)

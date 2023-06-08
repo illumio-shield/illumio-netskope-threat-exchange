@@ -26,6 +26,7 @@ class IllumioPluginConfig:
     api_username: str
     api_secret: str
     label_scope: str
+    enable_tagging: str = 'yes'
 
     def __post_init__(self):
         # handle type conversion for all fields, ignoring nulls
