@@ -10,16 +10,21 @@ License:
 """
 import json
 import traceback
+from pathlib import Path
 from typing import List
 
-from netskope.integrations.cte.models import Indicator, IndicatorType
+from netskope.common.utils import add_user_agent
+from netskope.integrations.cte.models import Indicator, IndicatorType, Tag
 from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
+from netskope.integrations.cte.utils import TagUtils
 
 from illumio import PolicyComputeEngine
 
 from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
 
+SRC_DIR = Path(__file__).resolve().parent
 PLUGIN_NAME = "Illumio CTE Plugin"
+ILO_ORANGE_HEX_CODE = "#f96425"
 
 
 class IllumioPlugin(PluginBase):
@@ -28,7 +33,26 @@ class IllumioPlugin(PluginBase):
     Retrieves threat IoCs from Illumio based on a provided policy scope.
     """
 
-    pce: PolicyComputeEngine
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.pce: PolicyComputeEngine = None
+        self.tag_utils: TagUtils = None
+        self._version: str = ''
+
+    @property
+    def version(self):
+        """Retrieve the plugin version from manifest.json."""
+        if self._version:
+            return self._version
+
+        try:
+            with open(str(SRC_DIR / 'manifest.json'), 'r') as f:
+                manifest = json.load(f)
+                self._version = manifest.get('version', '')
+        except Exception:
+            pass
+
+        return self._version
 
     def pull(self):
         """Pull workloads matching the configured scope from the Illumio PCE.
@@ -39,10 +63,9 @@ class IllumioPlugin(PluginBase):
         try:
             conf = IllumioPluginConfig(**self.configuration)
             self.pce = connect_to_pce(
-                conf, proxies=self.proxy, verify=self.ssl_validation
+                conf, proxies=self.proxy, verify=self.ssl_validation,
+                headers=self._get_connection_headers()
             )
-
-            indicators = []
 
             return self._get_threat_indicators(conf.label_scope)
         except Exception as e:
@@ -51,7 +74,15 @@ class IllumioPlugin(PluginBase):
                 details=traceback.format_exc()
             )
 
-        return indicators
+        return []
+
+    def _get_connection_headers(self) -> None:
+        """Set the Netskope User-Agent headers on the PCE HTTP session."""
+        headers = add_user_agent()
+        headers['User-Agent'] = '{}-cte-illumio-v{}'.format(
+            headers.get('User-Agent', 'netskope-ce'), self.version
+        )
+        return headers
 
     def _get_threat_indicators(self, label_scope: str) -> List[Indicator]:
         """Retrieve threat workload IPs from the Illumio PCE.
@@ -72,7 +103,11 @@ class IllumioPlugin(PluginBase):
             workloads = self.pce.workloads.get_async(
                 # the labels query param takes a JSON-formatted nested list of
                 # label HREFs - each inner list represents a separate scope
-                params={'labels': json.dumps([refs])}
+                params={
+                    'labels': json.dumps([refs]),
+                    # include label keys/values in the response data
+                    'representation': 'workload_labels'
+                }
             )
         except Exception as e:
             self.logger.error(
@@ -90,24 +125,24 @@ class IllumioPlugin(PluginBase):
             desc = f'Illumio Workload - {workload.name}' \
                 f'\n{workload.description}'
 
-            if workload.hostname:
-                indicators.append(
-                    Indicator(
-                        value=workload.hostname,
-                        type=IndicatorType.URL,
-                        comments=desc,
-                        extendedInformation=workload_uri
-                    )
-                )
+            uris = [str(intf.address) for intf in workload.interfaces]
+            uris.append(workload.hostname)  # include the hostname as an IoC
 
-            for interface in workload.interfaces:
-                if interface.address:
+            for uri in uris:
+                if uri:
                     indicators.append(
                         Indicator(
-                            value=str(interface.address),
+                            value=uri,
                             type=IndicatorType.URL,
+                            firstSeen=workload.created_at,
+                            lastSeen=workload.updated_at,
+                            # TODO: expire each IoC after the sync interval
+                            # so we don't hold on to workloads that have
+                            # changed scope
+                            # expiresAt=datetime.now() + sync_interval
                             comments=desc,
-                            extendedInformation=workload_uri
+                            extendedInformation=workload_uri,
+                            tags=self._create_label_tags(workload.labels)
                         )
                     )
 
@@ -136,12 +171,39 @@ class IllumioPlugin(PluginBase):
                 # only expect to match a single label for each k:v pair
                 refs.append(labels[0].href)
             else:
-                msg = f'{PLUGIN_NAME}: Failed to find label with' \
-                    f' key "{key}" and value "{value}"'
-                self.logger.warn(f'{PLUGIN_NAME}: {msg}')
-                self.notifier.warn(f'{PLUGIN_NAME}: {msg}')
+                msg = f'{PLUGIN_NAME}: Failed to find label {key}:{value}'
+                self.logger.warn(msg)
+                self.notifier.warn(msg)
 
         return refs
+
+    def _create_label_tags(self, labels: list) -> List[str]:
+        """Create and return a list of tag names based on workload labels.
+
+        If a tag for the label doesn't exist in Netskope, one is created.
+
+        Args:
+            labels (list): label objects for a given workload.
+
+        Returns:
+            List[str]: the label tag names, of the form key:value.
+        """
+        if not self.tag_utils:
+            self.tag_utils = TagUtils()
+
+        tags = []
+
+        for label in labels:
+            label_tag = f'{label.key}:{label.value}'
+
+            if not self.tag_utils.exists(label_tag):
+                self.tag_utils.create_tag(
+                    Tag(name=label_tag, color=ILO_ORANGE_HEX_CODE)
+                )
+
+            tags.append(label_tag)
+
+        return tags
 
     def validate(self, configuration):
         """Validate the plugin configuration parameters.
@@ -200,6 +262,7 @@ class IllumioPlugin(PluginBase):
             try:
                 connect_to_pce(
                     conf, proxies=self.proxy, verify=self.ssl_validation,
+                    headers=self._get_connection_headers(),
                     # fail quickly if PCE connection params are invalid
                     retry_count=1, request_timeout=5
                 )

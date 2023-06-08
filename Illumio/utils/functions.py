@@ -29,11 +29,13 @@ def parse_label_scope(scope: str) -> dict:
             continue
         k, v = label.split(":")
         labels[k.strip()] = v.strip()
+    if not labels:
+        raise ValueError("Empty label scope provided")
     return labels
 
 
 def connect_to_pce(conf: IllumioPluginConfig, proxies: dict = None,
-                   verify: bool = True, **kwargs) -> PolicyComputeEngine:
+                   headers: dict = None, verify: bool = True, **kwargs) -> PolicyComputeEngine:  # noqa: E501
     """Connect to the PCE, returning the PolicyComputeEngine client.
 
     Args:
@@ -50,6 +52,7 @@ def connect_to_pce(conf: IllumioPluginConfig, proxies: dict = None,
     pce = PolicyComputeEngine(
         conf.pce_url, port=conf.pce_port, org_id=conf.org_id, **kwargs
     )
+    pce._session.headers.update(headers)
     pce.set_credentials(conf.api_username, conf.api_secret)
     pce.set_tls_settings(verify=verify)
     if proxies:

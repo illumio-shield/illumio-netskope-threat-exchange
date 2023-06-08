@@ -7,7 +7,6 @@ from Illumio import utils
 
 @pytest.mark.parametrize(
     "label_scope,expected_result,labels", [
-        ('', does_not_raise(), {}),  # should be caught as a validation error
         ('loc:quarantine', does_not_raise(), {'loc': 'quarantine'}),
         ('  loc  :  quarantine  ', does_not_raise(), {'loc': 'quarantine'}),
         ('loc: quarantine,', does_not_raise(), {'loc': 'quarantine'}),
@@ -22,6 +21,8 @@ from Illumio import utils
             None
         ),
         ('quarantine', pytest.raises(ValueError), None),
+        ('', pytest.raises(ValueError), None),
+        (',,', pytest.raises(ValueError), None),
     ]
 )
 def test_parse_label_scopes(label_scope, expected_result, labels):
