@@ -119,7 +119,7 @@ class IllumioPlugin(PluginBase):
         for workload in workloads:
             workload_id = workload.href.split('/')[-1]
             pce_url = "{}://{}:{}".format(
-                self.pce._scheme, self.pce._hostname, self.pce.port
+                self.pce._scheme, self.pce._hostname, self.pce._port
             )
             workload_uri = f'{pce_url}/#/workloads/{workload_id}'
             desc = f'Illumio Workload - {workload.name}' \
@@ -160,6 +160,9 @@ class IllumioPlugin(PluginBase):
 
         Returns:
             List[str]: List of HREFs.
+
+        Raises:
+            ValueError: if a label with the given key:value can't be found.
         """
         refs = []
 
@@ -171,9 +174,11 @@ class IllumioPlugin(PluginBase):
                 # only expect to match a single label for each k:v pair
                 refs.append(labels[0].href)
             else:
-                msg = f'{PLUGIN_NAME}: Failed to find label {key}:{value}'
-                self.logger.warn(msg)
-                self.notifier.warn(msg)
+                # if we don't raise an error, we risk pulling workloads
+                # outside the expected scope and blocking legitimate access
+                msg = f'Failed to find label {key}:{value}'
+                self.notifier.error(f'{PLUGIN_NAME}: {msg}')
+                raise ValueError(msg)
 
         return refs
 
