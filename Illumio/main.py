@@ -19,7 +19,7 @@ from illumio import PolicyComputeEngine
 
 from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
 
-PLUGIN_NAME = "CTE Illumio Plugin"
+PLUGIN_NAME = "Illumio CTE Plugin"
 
 
 class IllumioPlugin(PluginBase):
@@ -29,10 +29,6 @@ class IllumioPlugin(PluginBase):
     """
 
     pce: PolicyComputeEngine
-
-    def __init__(self, name, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
-        self.log_prefix = f"{PLUGIN_NAME} [{name}]"
 
     def pull(self):
         """Pull workloads matching the configured scope from the Illumio PCE.
@@ -48,21 +44,16 @@ class IllumioPlugin(PluginBase):
 
             indicators = []
 
-            ips = self.get_threat_indicators(conf.label_scope)
-            for ip in ips:
-                self.logger.debug(
-                    f"{self.log_prefix}: Successfully retrieved IP: {ip}"
-                )
-                indicators.append(Indicator(value=ip, type=IndicatorType.URL))
+            return self._get_threat_indicators(conf.label_scope)
         except Exception as e:
             self.logger.error(
-                f"{self.log_prefix}: Failed to pull threat IoCs: {str(e)}",
+                f"{PLUGIN_NAME}: Failed to pull threat IoCs: {str(e)}",
                 details=traceback.format_exc()
             )
 
         return indicators
 
-    def get_threat_indicators(self, label_scope: str) -> List[str]:
+    def _get_threat_indicators(self, label_scope: str) -> List[Indicator]:
         """Retrieve threat workload IPs from the Illumio PCE.
 
         Given a PCE connection client and policy scope, we call the PCE APIs to
@@ -76,40 +67,81 @@ class IllumioPlugin(PluginBase):
         Returns:
             List[str]: List of IP addresses from threat workloads.
         """
-        refs = []
-
         try:
-            labels = parse_label_scope(label_scope)
-
-            for key, value in labels.items():
-                labels = self.pce.labels.get(
-                    params={"key": key, "value": value}
-                )
-                if len(labels) > 0:
-                    # only expect to match a single label for each k:v pair
-                    refs.append(labels[0].href)
-                else:
-                    self.logger.warn(
-                        f'{self.log_prefix}: Failed to find label with'
-                        f' key "{key}" and value "{value}"'
-                    )
-
+            refs = self._get_label_refs(parse_label_scope(label_scope))
             workloads = self.pce.workloads.get_async(
+                # the labels query param takes a JSON-formatted nested list of
+                # label HREFs - each inner list represents a separate scope
                 params={'labels': json.dumps([refs])}
             )
         except Exception as e:
             self.logger.error(
-                f"{self.log_prefix}: Failed to fetch workloads: {str(e)}"
+                f"{PLUGIN_NAME}: Failed to fetch workloads: {str(e)}"
             )
 
-        ips = []
+        indicators = []
 
         for workload in workloads:
+            workload_id = workload.href.split('/')[-1]
+            pce_url = "{}://{}:{}".format(
+                self.pce._scheme, self.pce._hostname, self.pce.port
+            )
+            workload_uri = f'{pce_url}/#/workloads/{workload_id}'
+            desc = f'Illumio Workload - {workload.name}' \
+                f'\n{workload.description}'
+
+            if workload.hostname:
+                indicators.append(
+                    Indicator(
+                        value=workload.hostname,
+                        type=IndicatorType.URL,
+                        comments=desc,
+                        extendedInformation=workload_uri
+                    )
+                )
+
             for interface in workload.interfaces:
                 if interface.address:
-                    ips.append(str(interface.address))
+                    indicators.append(
+                        Indicator(
+                            value=str(interface.address),
+                            type=IndicatorType.URL,
+                            comments=desc,
+                            extendedInformation=workload_uri
+                        )
+                    )
 
-        return ips
+        self.logger.info(
+            f"{PLUGIN_NAME}: Successfully retrieved {len(indicators)} IoCs"
+        )
+
+        return indicators
+
+    def _get_label_refs(self, labels: dict) -> List[str]:
+        """Retrieve Label object HREFs from the PCE.
+
+        Args:
+            labels (dict): label key:value pairs to look up.
+
+        Returns:
+            List[str]: List of HREFs.
+        """
+        refs = []
+
+        for key, value in labels.items():
+            labels = self.pce.labels.get(
+                params={"key": key, "value": value}
+            )
+            if len(labels) > 0:
+                # only expect to match a single label for each k:v pair
+                refs.append(labels[0].href)
+            else:
+                msg = f'{PLUGIN_NAME}: Failed to find label with' \
+                    f' key "{key}" and value "{value}"'
+                self.logger.warn(f'{PLUGIN_NAME}: {msg}')
+                self.notifier.warn(f'{PLUGIN_NAME}: {msg}')
+
+        return refs
 
     def validate(self, configuration):
         """Validate the plugin configuration parameters.
@@ -120,7 +152,7 @@ class IllumioPlugin(PluginBase):
         Returns:
             ValidationResult: Validation result with success flag and message.
         """
-        self.logger.info("{self.log_prefix}: validating plugin instance")
+        self.logger.info(f"{PLUGIN_NAME}: validating plugin instance")
 
         # read the configuration into a dataclass - type checking is performed
         # as a post-init on all fields. Implicitly checks existence, where the
@@ -129,13 +161,13 @@ class IllumioPlugin(PluginBase):
             conf = IllumioPluginConfig(**configuration)
         except ValueError as e:
             self.logger.error(
-                f"{self.log_prefix}: {str(e)}",
+                f"{PLUGIN_NAME}: {str(e)}",
                 details=traceback.format_exc()
             )
             return ValidationResult(success=False, message=str(e))
         except Exception as e:
             self.logger.error(
-                f"{self.log_prefix}: Failed to read config: {str(e)}",
+                f"{PLUGIN_NAME}: Failed to read config: {str(e)}",
                 details=traceback.format_exc()
             )
             return ValidationResult(
@@ -167,7 +199,9 @@ class IllumioPlugin(PluginBase):
         if not error_message:
             try:
                 connect_to_pce(
-                    conf, proxies=self.proxy, verify=self.ssl_validation
+                    conf, proxies=self.proxy, verify=self.ssl_validation,
+                    # fail quickly if PCE connection params are invalid
+                    retry_count=1, request_timeout=5
                 )
             except Exception as e:
                 error_message = f"Unable to connect to PCE: {str(e)}"
@@ -176,11 +210,11 @@ class IllumioPlugin(PluginBase):
 
         if error_message:
             self.logger.error(
-                f"{self.log_prefix}: Validation error: {error_message}",
+                f"{PLUGIN_NAME}: Validation error: {error_message}",
                 details=traceback.format_exc()
             )
 
         return ValidationResult(
             success=error_message == "",
-            message=error_message or "Validation successful"
+            message=error_message or f"{PLUGIN_NAME}: Validation successful"
         )
