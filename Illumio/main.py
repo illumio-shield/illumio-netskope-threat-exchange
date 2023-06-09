@@ -98,21 +98,16 @@ class IllumioPlugin(PluginBase):
         Returns:
             List[str]: List of IP addresses from threat workloads.
         """
-        try:
-            refs = self._get_label_refs(parse_label_scope(label_scope))
-            workloads = self.pce.workloads.get_async(
-                # the labels query param takes a JSON-formatted nested list of
-                # label HREFs - each inner list represents a separate scope
-                params={
-                    'labels': json.dumps([refs]),
-                    # include label keys/values in the response data
-                    'representation': 'workload_labels'
-                }
-            )
-        except Exception as e:
-            self.logger.error(
-                f"{PLUGIN_NAME}: Failed to fetch workloads: {str(e)}"
-            )
+        refs = self._get_label_refs(parse_label_scope(label_scope))
+        workloads = self.pce.workloads.get_async(
+            # the labels query param takes a JSON-formatted nested list of
+            # label HREFs - each inner list represents a separate scope
+            params={
+                'labels': json.dumps([refs]),
+                # include label keys/values in the response data
+                'representation': 'workload_labels'
+            }
+        )
 
         indicators = []
 
