@@ -1,115 +1,282 @@
-"""Illumio Plugin providing implementation for pull and validate methods from PluginBase."""
+# -*- coding: utf-8 -*-
+
+"""This module provides the Illumio plugin for Netskope Threat Exchange.
+
+Copyright:
+    © 2023 Illumio
+
+License:
+    Apache2
+"""
 import json
-import requests
-from netskope.integrations.cte.plugin_base import (
-    PluginBase,
-    ValidationResult,
-    PushResult,
-)
-from netskope.integrations.cte.models import Indicator, IndicatorType
-from pydantic import ValidationError
-from .lib.illumio import PolicyComputeEngine
+import traceback
+from pathlib import Path
+from typing import List
+
+from netskope.common.utils import add_user_agent
+from netskope.integrations.cte.models import Indicator, IndicatorType, TagIn
+from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
+from netskope.integrations.cte.utils import TagUtils
+
+from illumio import PolicyComputeEngine
+
+from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
+
+SRC_DIR = Path(__file__).resolve().parent
+PLUGIN_NAME = "Illumio CTE Plugin"
+ILO_ORANGE_HEX_CODE = "#f96425"
 
 
 class IllumioPlugin(PluginBase):
-    def handle_error(self, resp: requests.Response) -> any:
+    """Netskope Threat Exchange plugin for the Illumio PCE.
+
+    Retrieves threat IoCs from Illumio based on a provided policy scope.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:  # noqa: D107
+        super().__init__(*args, **kwargs)
+        self.pce: PolicyComputeEngine = None
+        self.tag_utils: TagUtils = None
+        self._version: str = ''
+
+    @property
+    def version(self):
+        """Retrieve the plugin version from manifest.json."""
+        if self._version:
+            return self._version
+
         try:
-            resp.raise_for_status()
-            return resp.json()
-        except ValueError as e:
-            raise Exception(f"Illumio Plugin: failed to parse JSON ... {str(e)}") from e
-            self.logger.error(f"Illumio Plugin: failed to parse JSON {str(e)}")
+            with open(str(SRC_DIR / 'manifest.json'), 'r') as f:
+                manifest = json.load(f)
+                self._version = manifest.get('version', '')
+        except Exception:
+            pass
+
+        return self._version
+
+    def pull(self) -> List[Indicator]:
+        """Pull workloads matching the configured scope from the Illumio PCE.
+
+        Queries the PCE based on the given label scope, creating threat
+        indicators for each interface on workloads matching the scope.
+        """
+        try:
+            conf = IllumioPluginConfig(**self.configuration)
+            self.pce = connect_to_pce(
+                conf, proxies=self.proxy, verify=self.ssl_validation,
+                headers=self._get_connection_headers()
+            )
+
+            return self._get_threat_indicators(conf.label_scope)
         except Exception as e:
-            raise Exception(f"Illumio Plugin: Exception {str(e)}") from e
-            self.logger.error(f"Illumio Plugin: Exception {str(e)}")
+            self.logger.error(
+                f"{PLUGIN_NAME}: Failed to pull threat IoCs: {str(e)}",
+                details=traceback.format_exc()
+            )
 
-            
-    def labeltoip(self, pce, label_scope):
-        label_dimensions = label_scope.split(",")
-        refs = []
-        ips  = []
-        for label in label_dimensions:
-            key, value = label.split(":")
-            labels = pce.labels.get(params={"key": key, "value": value})
-            if len(labels) > 0:
-                refs.append(labels[0].href)
+        return []
 
-        workloads = pce.workloads.get(params={'labels': json.dumps([refs])})
+    def _get_connection_headers(self) -> dict:
+        """Set the Netskope User-Agent headers on the PCE HTTP session."""
+        headers = add_user_agent()
+        headers['User-Agent'] = '{}-cte-illumio-v{}'.format(
+            headers.get('User-Agent', 'netskope-ce'), self.version
+        )
+        return headers
+
+    def _get_threat_indicators(self, label_scope: str) -> List[Indicator]:
+        """Retrieve threat workload IPs from the Illumio PCE.
+
+        Given a PCE connection client and policy scope, we call the PCE APIs to
+        get workloads matching the scope and return all interface IP addresses.
+
+        Args:
+            pce (PolicyComputeEngine): PCE API client object.
+            label_scope (string): Policy scope as a comma-separated key:value
+                pair list.
+
+        Returns:
+            List[str]: List of IP addresses from threat workloads.
+        """
+        refs = self._get_label_refs(parse_label_scope(label_scope))
+        workloads = self.pce.workloads.get_async(
+            # the labels query param takes a JSON-formatted nested list of
+            # label HREFs - each inner list represents a separate scope
+            params={
+                'labels': json.dumps([refs]),
+                # include label keys/values in the response data
+                'representation': 'workload_labels'
+            }
+        )
+
+        indicators = []
 
         for workload in workloads:
-            for interface in workload.interfaces:
-                try:
-                    print("Illumio Plugin Successfully retrieved IP: " + str(interface.address))
-                    ips.append(interface.address)
+            workload_id = workload.href.split('/')[-1]
+            pce_url = "{}://{}:{}".format(
+                self.pce._scheme, self.pce._hostname, self.pce._port
+            )
+            workload_uri = f'{pce_url}/#/workloads/{workload_id}'
+            desc = f'Illumio Workload - {workload.name}' \
+                f'\n{workload.description}'
 
-                except ValidationError as err:
-                    print("Error occurred while pulling Labels. Hence skipping")
+            uris = [str(intf.address) for intf in workload.interfaces]
+            uris.append(workload.hostname)  # include the hostname as an IoC
 
-        return ips
+            for uri in uris:
+                if uri:
+                    indicators.append(
+                        Indicator(
+                            value=uri,
+                            type=IndicatorType.URL,
+                            firstSeen=workload.created_at,
+                            lastSeen=workload.updated_at,
+                            # TODO: expire each IoC after the sync interval
+                            # so we don't hold on to workloads that have
+                            # changed scope
+                            # expiresAt=datetime.now() + sync_interval
+                            comments=desc,
+                            extendedInformation=workload_uri,
+                            tags=self._create_label_tags(workload.labels)
+                        )
+                    )
 
-    def pull(self):
-        """Pull IPs of desired Labels from PCE"""
-        """Get all content from location configured on the plugin"""
-        config = self.configuration
-
-        """Setting PCE API details"""
-        pce = PolicyComputeEngine(config["api_url"], port=config["api_port"], org_id=config["org_id"])
-        pce.set_credentials(config["api_username"], config["api_password"])
-        
-        indicators = []
-        ips = self.labeltoip(pce, config["label_scope"])
-        for ip in ips:
-            indicators.append(Indicator(value=ip, type=IndicatorType.URL))
-            self.logger.info(f"Illumio Plugin: Successfully retrieved IP: {ip}")
         return indicators
 
+    def _get_label_refs(self, labels: dict) -> List[str]:
+        """Retrieve Label object HREFs from the PCE.
 
-    def validate(self, data):
-        """Validate the Plugin configuration parameters.
-        Validation for all the parameters mentioned in the manifest.json for the existence and
-        data type. Method returns the cte.plugin_base.ValidationResult object with success = True in the case
-        of successful validation and success = False and a error message in the case of failure.
         Args:
-        data (dict): Dict object having all the Plugin configuration parameters.
+            labels (dict): label key:value pairs to look up.
+
         Returns:
-        cte.plugin_base.ValidateResult: ValidateResult object with success flag and message.
+            List[str]: List of HREFs.
+
+        Raises:
+            ValueError: if a label with the given key:value can't be found.
         """
-        self.logger.info("Illumio Plugin: Executing validate method for Sample plugin")
-        if "api_url" not in data or not isinstance(data["api_url"], str) or not data["api_url"]:
-            self.logger.error(
-                "Illumio Plugin: Validation error occurred Error: API URL is required."
+        refs = []
+
+        for key, value in labels.items():
+            labels = self.pce.labels.get(
+                params={"key": key, "value": value}
             )
-            return ValidationResult(success=False, message="Invalid API URL provided.")
-        elif "api_username" not in data or not isinstance(data["api_username"], str) or not data["api_username"]:
+            if len(labels) > 0:
+                # only expect to match a single label for each k:v pair
+                refs.append(labels[0].href)
+            else:
+                # if we don't raise an error, we risk pulling workloads
+                # outside the expected scope and blocking legitimate access
+                msg = f'Failed to find label {key}:{value}'
+                self.notifier.error(f'{PLUGIN_NAME}: {msg}')
+                raise ValueError(msg)
+
+        return refs
+
+    def _create_label_tags(self, labels: list) -> List[str]:
+        """Create and return a list of tag names based on workload labels.
+
+        If a tag for the label doesn't exist in Netskope, one is created.
+
+        Args:
+            labels (list): label objects for a given workload.
+
+        Returns:
+            List[str]: the label tag names, of the form key:value.
+        """
+        if str(self.configuration.get('enable_tagging', '')).lower() != 'yes':
+            return []
+
+        if not self.tag_utils:
+            self.tag_utils = TagUtils()
+
+        tags = []
+
+        for label in labels:
+            label_tag = f'{label.key}:{label.value}'
+
+            if not self.tag_utils.exists(label_tag):
+                self.tag_utils.create_tag(
+                    TagIn(name=label_tag, color=ILO_ORANGE_HEX_CODE)
+                )
+
+            tags.append(label_tag)
+
+        return tags
+
+    def validate(self, configuration: dict) -> ValidationResult:
+        """Validate the plugin configuration parameters.
+
+        Args:
+            configuration (dict): Plugin configuration parameter map.
+
+        Returns:
+            ValidationResult: Validation result with success flag and message.
+        """
+        self.logger.info(f"{PLUGIN_NAME}: validating plugin instance")
+
+        # read the configuration into a dataclass - type checking is performed
+        # as a post-init on all fields. Implicitly checks existence, where the
+        # TypeError falls through to the catch-all Exception case
+        try:
+            conf = IllumioPluginConfig(**configuration)
+        except ValueError as e:
             self.logger.error(
-                "Illumio Plugin: Validation error occurred Error: API Username is required with type string."
+                f"{PLUGIN_NAME}: {str(e)}",
+                details=traceback.format_exc()
             )
-            return ValidationResult(success=False, message="Invalid API Username provided.")
-        elif "api_password" not in data or not isinstance(data["api_password"], str) or not data["api_password"]:
+            return ValidationResult(success=False, message=str(e))
+        except Exception as e:
             self.logger.error(
-                "Illumio Plugin: Validation error occurred Error: API Password is required with type string."
+                f"{PLUGIN_NAME}: Failed to read config: {str(e)}",
+                details=traceback.format_exc()
             )
-            return ValidationResult(success=False, message="Invalid API Password provided.")
-        elif "org_id" not in data or not isinstance(data["org_id"], int) or not data["org_id"]:
-            self.logger.error(
-                "Illumio Plugin: Validation error occurred Error: Org ID is required with type int."
+            return ValidationResult(
+                success=False,
+                message="Missing one or more configuration parameters"
             )
-            return ValidationResult(success=False, message="Invalid Org ID provided.")
-        elif "api_port" not in data or not isinstance(data["api_port"], int) or not data["api_port"]:
-            self.logger.error(
-                "Illumio Plugin: Validation error occurred Error: Port should be an integer."
-            )
-            return ValidationResult(success=False, message="Invalid Port provided.")
-        elif "label_scope" not in data or not isinstance(data["label_scope"], str) or not data["label_scope"] or len(data["label_scope"].split(":")) < 2:
-            self.logger.error(
-                "Illumio Plugin: Validation error occurred Error: Label Scope is required with at least one key pair and described format"
-            )
-            return ValidationResult(success=False, message="Invalid Label Scope provided.")
+
+        error_message = ""
+
+        if not conf.pce_url.strip():
+            error_message = "PCE URL cannot be empty"
+        elif not conf.api_username.strip():
+            error_message = "API Username cannot be empty"
+        elif not conf.api_secret.strip():
+            error_message = "API Secret cannot be empty"
+        elif conf.org_id <= 0:
+            error_message = "Org ID must be a positive integer"
+        elif not (1 <= conf.pce_port <= 65535):
+            error_message = "PCE Port must be an integer in the range 1-65535"
+        elif not conf.label_scope.strip():
+            error_message = "Label Scope cannot be empty"
         else:
             try:
-                pce = PolicyComputeEngine(data["api_url"], port=data["api_port"], org_id=data["org_id"])
-                pce.set_credentials(data["api_username"], data["api_password"])
-                pce.must_connect()
+                parse_label_scope(conf.label_scope)
             except Exception as e:
-                return ValidationResult(success=False, message="Unable to connect to PCE: " + str(e))
-            return ValidationResult(success=True, message="Validation successful.")
+                error_message = f"Failed to parse Label Scope: {str(e)}"
+
+        # only try to connect if the configuration is valid
+        if not error_message:
+            try:
+                connect_to_pce(
+                    conf, proxies=self.proxy, verify=self.ssl_validation,
+                    headers=self._get_connection_headers(),
+                    # fail quickly if PCE connection params are invalid
+                    retry_count=1, request_timeout=5
+                )
+            except Exception as e:
+                error_message = f"Unable to connect to PCE: {str(e)}"
+
+        error_message = error_message.strip()
+
+        if error_message:
+            self.logger.error(
+                f"{PLUGIN_NAME}: Validation error: {error_message}",
+                details=traceback.format_exc()
+            )
+
+        return ValidationResult(
+            success=error_message == "",
+            message=error_message or f"{PLUGIN_NAME}: Validation successful"
+        )
