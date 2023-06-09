@@ -14,7 +14,7 @@ from .config import IllumioPluginConfig
 
 
 def parse_label_scope(scope: str) -> dict:
-    """Parses label scopes passed as a string of the form k1:v1,k2:v2,...
+    """Parse label scopes passed as a string of the form k1:v1,k2:v2,...
 
     Args:
         scope (str): Policy scope as a comma-separated key:value pair list.

@@ -20,6 +20,7 @@ class IllumioPluginConfig:
     Raises:
         ValueError: if the type of a given parameter is invalid or null.
     """
+
     pce_url: str
     pce_port: int
     org_id: int
@@ -29,7 +30,7 @@ class IllumioPluginConfig:
     enable_tagging: str = 'yes'
 
     def __post_init__(self):
-        # handle type conversion for all fields, ignoring nulls
+        """Handle type conversion for all fields, ignoring nulls."""
         for field in fields(self):
             val = getattr(self, field.name)
             if val is None:

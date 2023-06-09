@@ -33,7 +33,7 @@ class IllumioPlugin(PluginBase):
     Retrieves threat IoCs from Illumio based on a provided policy scope.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:  # noqa: D107
         super().__init__(*args, **kwargs)
         self.pce: PolicyComputeEngine = None
         self.tag_utils: TagUtils = None
