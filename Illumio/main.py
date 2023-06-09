@@ -54,7 +54,7 @@ class IllumioPlugin(PluginBase):
 
         return self._version
 
-    def pull(self):
+    def pull(self) -> List[Indicator]:
         """Pull workloads matching the configured scope from the Illumio PCE.
 
         Queries the PCE based on the given label scope, creating threat
@@ -76,7 +76,7 @@ class IllumioPlugin(PluginBase):
 
         return []
 
-    def _get_connection_headers(self) -> None:
+    def _get_connection_headers(self) -> dict:
         """Set the Netskope User-Agent headers on the PCE HTTP session."""
         headers = add_user_agent()
         headers['User-Agent'] = '{}-cte-illumio-v{}'.format(
@@ -204,7 +204,7 @@ class IllumioPlugin(PluginBase):
 
         return tags
 
-    def validate(self, configuration):
+    def validate(self, configuration: dict) -> ValidationResult:
         """Validate the plugin configuration parameters.
 
         Args:
