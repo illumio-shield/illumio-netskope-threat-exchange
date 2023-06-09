@@ -141,10 +141,6 @@ class IllumioPlugin(PluginBase):
                         )
                     )
 
-        self.logger.info(
-            f"{PLUGIN_NAME}: Successfully retrieved {len(indicators)} IoCs"
-        )
-
         return indicators
 
     def _get_label_refs(self, labels: dict) -> List[str]:
