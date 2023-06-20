@@ -20,7 +20,12 @@ from netskope.integrations.cte.utils import TagUtils
 
 from illumio import PolicyComputeEngine
 
-from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
+from .utils import (
+    IllumioPluginConfig,
+    parse_label_scope,
+    connect_to_pce,
+    load_manifest
+)
 
 SRC_DIR = Path(__file__).resolve().parent
 PLUGIN_NAME = "Illumio CTE Plugin"
@@ -42,17 +47,8 @@ class IllumioPlugin(PluginBase):
     @property
     def version(self):
         """Retrieve the plugin version from manifest.json."""
-        if self._version:
-            return self._version
-
-        try:
-            with open(str(SRC_DIR / 'manifest.json'), 'r') as f:
-                manifest = json.load(f)
-                self._version = manifest.get('version', '')
-        except Exception:
-            pass
-
-        return self._version
+        manifest = load_manifest()
+        return manifest.get('version', '')
 
     def pull(self) -> List[Indicator]:
         """Pull workloads matching the configured scope from the Illumio PCE.
@@ -131,10 +127,6 @@ class IllumioPlugin(PluginBase):
                             type=IndicatorType.URL,
                             firstSeen=workload.created_at,
                             lastSeen=workload.updated_at,
-                            # TODO: expire each IoC after the sync interval
-                            # so we don't hold on to workloads that have
-                            # changed scope
-                            # expiresAt=datetime.now() + sync_interval
                             comments=desc,
                             extendedInformation=workload_uri,
                             tags=self._create_label_tags(workload.labels)
