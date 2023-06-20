@@ -10,7 +10,6 @@ License:
 """
 import json
 import traceback
-from pathlib import Path
 from typing import List
 
 from netskope.common.utils import add_user_agent
@@ -27,7 +26,6 @@ from .utils import (
     load_manifest
 )
 
-SRC_DIR = Path(__file__).resolve().parent
 PLUGIN_NAME = "CTE Illumio"
 ILO_ORANGE_HEX_CODE = "#f96425"
 
