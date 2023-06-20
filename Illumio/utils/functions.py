@@ -21,15 +21,26 @@ def parse_label_scope(scope: str) -> dict:
 
     Returns:
         dict: dict containing label key:value pairs.
+
+    Raises:
+        ValueError: if the given scope format is invalid.
     """
     label_dimensions = scope.split(",")
     labels = {}
     for label in label_dimensions:
         if not label.strip():
             continue
-        k, v = label.split(":")
+
+        try:
+            k, v = label.split(":")
+        except Exception:
+            raise ValueError(
+                "Invalid format: must be key1:value1,key2:value2..."
+            )
+
         if k.strip() in labels:
             raise ValueError("Label scope keys must be unique")
+
         labels[k.strip()] = v.strip()
     if not labels:
         raise ValueError("Empty label scope provided")
