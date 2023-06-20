@@ -40,13 +40,14 @@ class IllumioPluginConfig:
         """Handle type conversion for all fields, ignoring nulls."""
         for field in fields(self):
             val = getattr(self, field.name)
-            field_label = _get_field_label_by_key(field.name)
             if val is None:
+                field_label = _get_field_label_by_key(field.name)
                 raise ValueError(f"{field_label}: field cannot be empty")
             if not isinstance(val, field.type):
                 try:
                     setattr(self, field.name, field.type(val))
                 except ValueError:
+                    field_label = _get_field_label_by_key(field.name)
                     raise ValueError(f"{field_label}: invalid value {val}")
 
 
