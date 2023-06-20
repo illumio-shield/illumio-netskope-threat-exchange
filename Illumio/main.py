@@ -41,7 +41,7 @@ class IllumioPlugin(PluginBase):
         self.pce: PolicyComputeEngine = None
         self.tag_utils: TagUtils = None
         self._version: str = ''
-        self.log_prefix = f'{PLUGIN_NAME}' + f' [{name}]' if name else ''
+        self.log_prefix = f'{PLUGIN_NAME}' + (f' [{name}]' if name else '')
 
     @property
     def version(self):
