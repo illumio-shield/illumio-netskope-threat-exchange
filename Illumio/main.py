@@ -39,7 +39,7 @@ class IllumioPlugin(PluginBase):
     """
 
     def __init__(self, name, *args, **kwargs) -> None:  # noqa: D107
-        super().__init__(*args, **kwargs)
+        super().__init__(name, *args, **kwargs)
         self.pce: PolicyComputeEngine = None
         self.tag_utils: TagUtils = None
         self._version: str = ''
