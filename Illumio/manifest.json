@@ -52,7 +52,7 @@
             "type": "text",
             "default": "",
             "mandatory": true,
-            "description": "One or more label key/value pairs that make up the policy scope for threat workloads. Must be of the format key1:value1,key2:value2,..."
+            "description": "One or more label key/value pairs that make up the policy scope for threat workloads. Must be of the format key1:value1,key2:value2,... For example: env:Quarantine,loc:Quarantine"
         },
         {
             "label": "Enable Tagging",
