@@ -154,7 +154,7 @@ class IllumioPlugin(PluginBase):
             labels = self.pce.labels.get(
                 params={"key": key, "value": value}
             )
-            if len(labels) > 0:
+            if len(labels) > 0 and labels[0].value == value:
                 # only expect to match a single label for each k:v pair
                 refs.append(labels[0].href)
             else:
