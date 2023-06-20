@@ -28,6 +28,8 @@ def parse_label_scope(scope: str) -> dict:
         if not label.strip():
             continue
         k, v = label.split(":")
+        if k.strip() in labels:
+            raise ValueError("Label scope keys must be unique")
         labels[k.strip()] = v.strip()
     if not labels:
         raise ValueError("Empty label scope provided")
