@@ -10,7 +10,6 @@ License:
 """
 import json
 import traceback
-from pathlib import Path
 from typing import List
 
 from netskope.common.utils import add_user_agent
@@ -20,10 +19,14 @@ from netskope.integrations.cte.utils import TagUtils
 
 from illumio import PolicyComputeEngine
 
-from .utils import IllumioPluginConfig, parse_label_scope, connect_to_pce
+from .utils import (
+    IllumioPluginConfig,
+    parse_label_scope,
+    connect_to_pce,
+    load_manifest
+)
 
-SRC_DIR = Path(__file__).resolve().parent
-PLUGIN_NAME = "Illumio CTE Plugin"
+PLUGIN_NAME = "CTE Illumio"
 ILO_ORANGE_HEX_CODE = "#f96425"
 
 
@@ -33,26 +36,18 @@ class IllumioPlugin(PluginBase):
     Retrieves threat IoCs from Illumio based on a provided policy scope.
     """
 
-    def __init__(self, *args, **kwargs) -> None:  # noqa: D107
-        super().__init__(*args, **kwargs)
+    def __init__(self, name, *args, **kwargs) -> None:  # noqa: D107
+        super().__init__(name, *args, **kwargs)
         self.pce: PolicyComputeEngine = None
         self.tag_utils: TagUtils = None
         self._version: str = ''
+        self.log_prefix = f'{PLUGIN_NAME}' + (f' [{name}]' if name else '')
 
     @property
     def version(self):
         """Retrieve the plugin version from manifest.json."""
-        if self._version:
-            return self._version
-
-        try:
-            with open(str(SRC_DIR / 'manifest.json'), 'r') as f:
-                manifest = json.load(f)
-                self._version = manifest.get('version', '')
-        except Exception:
-            pass
-
-        return self._version
+        manifest = load_manifest()
+        return manifest.get('version', '')
 
     def pull(self) -> List[Indicator]:
         """Pull workloads matching the configured scope from the Illumio PCE.
@@ -70,7 +65,7 @@ class IllumioPlugin(PluginBase):
             return self._get_threat_indicators(conf.label_scope)
         except Exception as e:
             self.logger.error(
-                f"{PLUGIN_NAME}: Failed to pull threat IoCs: {str(e)}",
+                f"{self.log_prefix}: Failed to pull threat IoCs: {str(e)}",
                 details=traceback.format_exc()
             )
 
@@ -131,10 +126,6 @@ class IllumioPlugin(PluginBase):
                             type=IndicatorType.URL,
                             firstSeen=workload.created_at,
                             lastSeen=workload.updated_at,
-                            # TODO: expire each IoC after the sync interval
-                            # so we don't hold on to workloads that have
-                            # changed scope
-                            # expiresAt=datetime.now() + sync_interval
                             comments=desc,
                             extendedInformation=workload_uri,
                             tags=self._create_label_tags(workload.labels)
@@ -161,14 +152,14 @@ class IllumioPlugin(PluginBase):
             labels = self.pce.labels.get(
                 params={"key": key, "value": value}
             )
-            if len(labels) > 0:
+            if len(labels) > 0 and labels[0].value == value:
                 # only expect to match a single label for each k:v pair
                 refs.append(labels[0].href)
             else:
                 # if we don't raise an error, we risk pulling workloads
                 # outside the expected scope and blocking legitimate access
                 msg = f'Failed to find label {key}:{value}'
-                self.notifier.error(f'{PLUGIN_NAME}: {msg}')
+                self.notifier.error(f'{self.log_prefix}: {msg}')
                 raise ValueError(msg)
 
         return refs
@@ -213,7 +204,7 @@ class IllumioPlugin(PluginBase):
         Returns:
             ValidationResult: Validation result with success flag and message.
         """
-        self.logger.info(f"{PLUGIN_NAME}: validating plugin instance")
+        self.logger.info(f"{self.log_prefix}: validating plugin instance")
 
         # read the configuration into a dataclass - type checking is performed
         # as a post-init on all fields. Implicitly checks existence, where the
@@ -222,13 +213,13 @@ class IllumioPlugin(PluginBase):
             conf = IllumioPluginConfig(**configuration)
         except ValueError as e:
             self.logger.error(
-                f"{PLUGIN_NAME}: {str(e)}",
+                f"{self.log_prefix}: {str(e)}",
                 details=traceback.format_exc()
             )
             return ValidationResult(success=False, message=str(e))
         except Exception as e:
             self.logger.error(
-                f"{PLUGIN_NAME}: Failed to read config: {str(e)}",
+                f"{self.log_prefix}: Failed to read config: {str(e)}",
                 details=traceback.format_exc()
             )
             return ValidationResult(
@@ -272,11 +263,11 @@ class IllumioPlugin(PluginBase):
 
         if error_message:
             self.logger.error(
-                f"{PLUGIN_NAME}: Validation error: {error_message}",
+                f"{self.log_prefix}: Validation error: {error_message}",
                 details=traceback.format_exc()
             )
 
         return ValidationResult(
             success=error_message == "",
-            message=error_message or f"{PLUGIN_NAME}: Validation successful"
+            message=error_message or "Validation successful"
         )
