@@ -1,7 +1,7 @@
 {
     "name": "Illumio",
     "id": "Illumio",
-    "version": "0.1.0",
+    "version": "1.0.0-beta",
     "description": "Creates Threat Exchange IoCs from workloads on the Illumio PCE within a configured policy scope.",
     "patch_supported": false,
     "push_supported": false,
