@@ -17,7 +17,7 @@ from netskope.integrations.cte.models import Indicator, IndicatorType, TagIn
 from netskope.integrations.cte.plugin_base import PluginBase, ValidationResult
 from netskope.integrations.cte.utils import TagUtils
 
-from illumio import PolicyComputeEngine
+from illumio import PolicyComputeEngine, IllumioException
 
 from .utils import (
     IllumioPluginConfig,
@@ -26,7 +26,6 @@ from .utils import (
     load_manifest
 )
 
-PLUGIN_NAME = "CTE Illumio"
 ILO_ORANGE_HEX_CODE = "#f96425"
 
 
@@ -40,20 +39,19 @@ class IllumioPlugin(PluginBase):
         super().__init__(name, *args, **kwargs)
         self.pce: PolicyComputeEngine = None
         self.tag_utils: TagUtils = None
-        self._version: str = ''
-        self.log_prefix = f'{PLUGIN_NAME}' + (f' [{name}]' if name else '')
-
-    @property
-    def version(self):
-        """Retrieve the plugin version from manifest.json."""
         manifest = load_manifest()
-        return manifest.get('version', '')
+        self._version = manifest.get('version', '')
+        plugin_name = manifest.get('name', '')
+        self.log_prefix = f'CTE {plugin_name}' + (f' [{name}]' if name else '')
 
     def pull(self) -> List[Indicator]:
         """Pull workloads matching the configured scope from the Illumio PCE.
 
         Queries the PCE based on the given label scope, creating threat
         indicators for each interface on workloads matching the scope.
+
+        Raises:
+            IllumioException: if an error occurs while pulling IoCs.
         """
         try:
             conf = IllumioPluginConfig(**self.configuration)
@@ -64,18 +62,15 @@ class IllumioPlugin(PluginBase):
 
             return self._get_threat_indicators(conf.label_scope)
         except Exception as e:
-            self.logger.error(
-                f"{self.log_prefix}: Failed to pull threat IoCs: {str(e)}",
-                details=traceback.format_exc()
-            )
-
-        return []
+            msg = f"{self.log_prefix}: Failed to pull threat IoCs: {str(e)}"
+            self.logger.error(msg, details=traceback.format_exc())
+            raise IllumioException(msg) from e
 
     def _get_connection_headers(self) -> dict:
         """Set the Netskope User-Agent headers on the PCE HTTP session."""
         headers = add_user_agent()
         headers['User-Agent'] = '{}-cte-illumio-v{}'.format(
-            headers.get('User-Agent', 'netskope-ce'), self.version
+            headers.get('User-Agent', 'netskope-ce'), self._version
         )
         return headers
 
