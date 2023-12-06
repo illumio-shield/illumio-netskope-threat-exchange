@@ -1,4 +1,4 @@
-requests=2.28.0  # Netskope requests version
+requests==2.31.0  # Netskope requests version
 pytest>=7.3.1
 requests-mock>=1.10.0
 flake8>=5.0.4
